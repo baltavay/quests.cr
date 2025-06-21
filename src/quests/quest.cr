@@ -15,7 +15,7 @@ module Quests
   class Quest
     # The title/description of the quest
     property title : String
-    
+
     # Whether the quest is completed
     property completed : Bool
 

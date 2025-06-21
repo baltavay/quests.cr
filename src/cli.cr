@@ -11,15 +11,15 @@ module Quests
 
       parser = OptionParser.new do |parser|
         parser.banner = "Usage: quests [options]"
-        
+
         parser.on("-h", "--help", "Show help") do
           show_help = true
         end
-        
+
         parser.on("-v", "--version", "Show version") do
           show_version = true
         end
-        
+
         parser.on("--daily", "Enable daily quests mode (date-based file naming)") do
           daily_mode = true
         end
