@@ -25,6 +25,10 @@ jobs:
         crystal: ${{ matrix.crystal_version }}
     - name: Install libunibilium
       run: sudo apt-get install libunibilium-dev
+
+    - name: Install libreadline-dev
+      run: sudo apt install libreadline-dev
+
     - name: Cache shards
       uses: actions/cache@v3
       with:
