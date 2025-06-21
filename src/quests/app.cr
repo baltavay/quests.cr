@@ -14,6 +14,8 @@ module Quests
     @has_unsaved_changes : Bool
     @confirmation_mode : String?
     @save_as_mode : Bool
+    @scroll_offset : Int32
+    @visible_quest_count : Int32
 
     def initialize(daily_mode = false)
       @quests = [] of Quest
@@ -27,6 +29,8 @@ module Quests
       @has_unsaved_changes = false
       @confirmation_mode = nil
       @save_as_mode = false
+      @scroll_offset = 0
+      @visible_quest_count = 0
 
       @screen = Screen.new title: get_window_title, show_fps: nil
 
@@ -149,11 +153,17 @@ module Quests
           exit
         end
       when 'j'
-        @selected_quest = (@selected_quest + 1) % @quests.size if @quests.size > 0
-        update_display
+        if @quests.size > 0
+          @selected_quest = (@selected_quest + 1) % @quests.size
+          ensure_selected_visible
+          update_display
+        end
       when 'k'
-        @selected_quest = (@selected_quest - 1) % @quests.size if @quests.size > 0
-        update_display
+        if @quests.size > 0
+          @selected_quest = (@selected_quest - 1) % @quests.size
+          ensure_selected_visible
+          update_display
+        end
       when 'a'
         enter_input_mode
       when 'w'
@@ -178,11 +188,17 @@ module Quests
       # Handle arrow keys
       case e.key
       when Tput::Key::Down
-        @selected_quest = (@selected_quest + 1) % @quests.size if @quests.size > 0
-        update_display
+        if @quests.size > 0
+          @selected_quest = (@selected_quest + 1) % @quests.size
+          ensure_selected_visible
+          update_display
+        end
       when Tput::Key::Up
-        @selected_quest = (@selected_quest - 1) % @quests.size if @quests.size > 0
-        update_display
+        if @quests.size > 0
+          @selected_quest = (@selected_quest - 1) % @quests.size
+          ensure_selected_visible
+          update_display
+        end
       end
 
       # Reset help text after any key press
@@ -231,10 +247,12 @@ module Quests
           new_quest = @input_box.value.strip
           if !new_quest.empty?
             @quests << Quest.new(new_quest)
+            @selected_quest = @quests.size - 1  # Select the newly added quest
             @has_unsaved_changes = true
             update_window_title
           end
           exit_input_mode
+          ensure_selected_visible
           update_display
         end
       elsif e.key == Tput::Key::Escape
@@ -394,6 +412,7 @@ module Quests
       end
 
       @selected_quest = 0
+      @scroll_offset = 0
       @current_file = filename     # Track which file is currently loaded
       @has_unsaved_changes = false # Mark as saved when loading
       update_window_title
@@ -411,6 +430,7 @@ module Quests
         @files_box.hide
         @main_box.show
         @selected_quest = [@selected_quest, @quests.size - 1].min if @quests.size > 0
+        ensure_selected_visible
         update_display
       end
       update_help_text
@@ -485,28 +505,59 @@ module Quests
     end
 
     private def update_display
+      # Calculate available space for quests (subtract borders and padding)
+      # Use screen height minus help area (3 lines) and borders (2 lines)
+      screen_height = @screen.height
+      box_height = screen_height - 5  # Account for help text (3) and borders (2)
+      @visible_quest_count = [box_height, 1].max # Ensure at least 1 visible quest
+      
       content = String.build do |str|
-        @quests.each_with_index do |quest, idx|
-          # Create uniform format for all lines - exactly the same structure
-          marker = quest.completed ? "[✓]" : "[ ]"
-          title = quest.title
-
-          # Simple visual indicators without complex color tags
-          if idx == @selected_quest
-            # Selected quest: add arrow indicator
-            str << "→ #{marker} #{title}\n"
-          elsif quest.completed
-            # Completed quest: already has checkmark, no extra formatting needed
-            str << "  #{marker} #{title}\n"
-          else
-            # Regular quest: standard formatting
-            str << "  #{marker} #{title}\n"
-          end
-        end
-
         if @quests.empty?
           mode_text = @daily_mode ? "daily quests" : "quests"
           str << "  No #{mode_text} yet. Press 'a' to begin!\n"
+        else
+          # Calculate how many lines we have for actual quests (minus scroll indicators)
+          lines_available = @visible_quest_count
+          has_top_indicator = @scroll_offset > 0
+          has_bottom_indicator = (@scroll_offset + @visible_quest_count) < @quests.size
+          
+          lines_available -= 1 if has_top_indicator
+          lines_available -= 1 if has_bottom_indicator
+          lines_available = [lines_available, 1].max  # Always show at least 1 quest
+          
+          # Add scroll indicator at top if needed
+          if has_top_indicator
+            str << "  ↑ #{@scroll_offset} more above...\n"
+          end
+          
+          # Calculate visible quest range
+          start_idx = @scroll_offset
+          end_idx = [start_idx + lines_available - 1, @quests.size - 1].min
+          
+          # Show visible quests
+          (start_idx..end_idx).each do |idx|
+            quest = @quests[idx]
+            marker = quest.completed ? "[✓]" : "[ ]"
+            title = quest.title
+            
+            # Simple visual indicators without complex color tags
+            if idx == @selected_quest
+              # Selected quest: add arrow indicator
+              str << "→ #{marker} #{title}\n"
+            elsif quest.completed
+              # Completed quest: already has checkmark, no extra formatting needed
+              str << "  #{marker} #{title}\n"
+            else
+              # Regular quest: standard formatting
+              str << "  #{marker} #{title}\n"
+            end
+          end
+          
+          # Add scroll indicator at bottom if needed
+          if has_bottom_indicator
+            remaining = @quests.size - (end_idx + 1)
+            str << "  ↓ #{remaining} more below...\n"
+          end
         end
       end
 
@@ -525,6 +576,30 @@ module Quests
 
     private def update_window_title
       @screen.title = get_window_title
+    end
+
+    private def ensure_selected_visible
+      return if @quests.empty?
+      
+      # Simple logic: ensure selected quest is within the scrollable window
+      # We'll let update_display handle the complex indicator calculations
+      
+      # If selected quest is above current view, scroll up to show it
+      if @selected_quest < @scroll_offset
+        @scroll_offset = @selected_quest
+      end
+      
+      # If selected quest is below current view, scroll down to show it
+      # Use a conservative estimate for how many quests we can show
+      max_visible_quests = [@visible_quest_count - 2, 1].max  # Reserve space for indicators
+      if @selected_quest >= (@scroll_offset + max_visible_quests)
+        @scroll_offset = @selected_quest - max_visible_quests + 1
+      end
+      
+      # Keep scroll offset in bounds
+      @scroll_offset = [@scroll_offset, 0].max
+      max_scroll = [@quests.size - 1, 0].max
+      @scroll_offset = [@scroll_offset, max_scroll].min
     end
 
     private def handle_confirmation_keys(e)
