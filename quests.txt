@@ -1,0 +1,6 @@
+# Quests saved at 2025-06-21 13:55:03 +06:00
+
+[ ] Buy milk
+[✓] Read Crystal docs
+[ ] Learn terminal UI development
+[✓] Build awesome quest tracker

@@ -20,18 +20,7 @@ A terminal-based quest management application built with Crystal and Crysterm.
 
 ## Screenshots
 
-```
-┌────────────────────────────────────────────┐
-│[ ] Buy milk                                │
-│[✓] Read Crystal docs                       │
-│[ ] Learn terminal UI development           │
-│[✓] Build awesome quest tracker            │
-│                                            │
-│  No quests yet. Press 'a' to begin your   │
-│  adventure!                                │
-└────────────────────────────────────────────┘
-j/k/arrows: navigate, a: add quest, d: delete, x: complete, Ctrl+S: save, w: save as, Tab: files, q: quit
-```
+![Quests Terminal UI](assets/images/screenshot.png)
 
 ## Installation
 
