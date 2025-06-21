@@ -23,7 +23,8 @@ jobs:
       uses: crystal-lang/install-crystal@v1
       with:
         crystal: ${{ matrix.crystal_version }}
-    
+    - name: Install libunibilium
+      run: sudo apt-get install libunibilium-dev
     - name: Cache shards
       uses: actions/cache@v3
       with:
