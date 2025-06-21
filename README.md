@@ -2,12 +2,12 @@
 
 A terminal-based quest management application built with Crystal and Crysterm.
 
-[![Crystal CI](https://github.com/your-username/quests.cr/workflows/Crystal%20CI/badge.svg)](https://github.com/your-username/quests.cr/actions)
+[![Crystal CI](https://github.com/baltavay/quests.cr/workflows/Crystal%20CI/badge.svg)](https://github.com/baltavay/quests.cr/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
 
-- ✨ **Terminal UI** - Built with Crysterm using Tokyo Night color scheme
+- ✨ **Terminal UI** - Built with Crysterm with modern color scheme
 - 🌍 **Unicode Support** - Full support for international characters including Russian, Chinese, etc.
 - ⚔️ **Quest Management** - Add, complete, and delete quests with ease
 - 🎮 **Flexible Navigation** - Both vim-style (j/k) and arrow key navigation
@@ -39,7 +39,7 @@ j/k/arrows: navigate, a: add quest, d: delete, x: complete, Ctrl+S: save, w: sav
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/your-username/quests.cr
+git clone https://github.com/baltavay/quests.cr
 cd quests.cr
 ```
 
@@ -65,7 +65,7 @@ Add this to your application's `shard.yml`:
 ```yaml
 dependencies:
   quests:
-    github: your-username/quests.cr
+    github: baltavay/quests.cr
 ```
 
 Then run:
@@ -165,7 +165,7 @@ app.run
 ### Setup
 
 ```bash
-git clone https://github.com/your-username/quests.cr
+git clone https://github.com/baltavay/quests.cr
 cd quests.cr
 shards install
 ```
@@ -222,7 +222,7 @@ Main application class providing the terminal interface.
 
 ## Contributing
 
-1. Fork it (<https://github.com/your-username/quests.cr/fork>)
+1. Fork it (<https://github.com/baltavay/quests.cr/fork>)
 2. Create your feature branch (`git checkout -b my-new-feature`)
 3. Write tests for your changes
 4. Commit your changes (`git commit -am 'Add some feature'`)
@@ -248,14 +248,27 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Roadmap
 
-- [ ] Persistent storage (JSON/YAML files)
+### Completed ✅
+- [x] Terminal UI with modern color scheme
+- [x] Unicode support for international characters  
+- [x] Quest management (add, complete, delete)
+- [x] Daily quests mode with date-based files
+- [x] File browser and switching between quest files
+- [x] Save As functionality
+- [x] Unsaved changes tracking with visual indicators
+- [x] Save prompts when quitting with unsaved work
+
+### Planned 🚀
 - [ ] Quest categories and tags
 - [ ] Due dates and priorities
-- [ ] Import/export functionality
-- [ ] Multiple quest lists
-- [ ] Search and filtering
+- [ ] Search and filtering within quests
+- [ ] Import/export functionality (JSON/CSV)
+- [ ] Multiple quest lists/projects
 - [ ] Configuration file support
-- [ ] Themes and customization
+- [ ] Themes and color customization
+- [ ] Quest templates and recurring tasks
+- [ ] Statistics and progress tracking
+- [ ] Keyboard shortcuts customization
 
 ---
 
