@@ -1,0 +1,46 @@
+version: 2.0
+shards:
+  crystallabs-helpers:
+    git: https://github.com/crystallabs/crystallabs-helpers.cr.git
+    version: 1.0.1
+
+  crysterm:
+    git: https://github.com/crystallabs/crysterm.git
+    version: 1.0.0+git.commit.f1456a23d070b43e13886b4b9320f03269481b7b
+
+  event_handler:
+    git: https://github.com/crystallabs/event_handler.git
+    version: 1.0.3
+
+  gpm:
+    git: https://github.com/crystallabs/gpm.cr.git
+    version: 1.0.5
+
+  ioctl:
+    git: https://github.com/crystal-posix/ioctl.cr.git
+    version: 1.0.0
+
+  term-screen:
+    git: https://github.com/crystal-term/screen.git
+    version: 0.1.0+git.commit.8fdecd58ace9e981280b79dc6b16179b173e630b
+
+  term_colors:
+    git: https://github.com/crystallabs/term_colors.git
+    version: 1.0.1
+
+  tput:
+    git: https://github.com/crystallabs/tput.git
+    version: 1.0.8+git.commit.0a8cde959f9ae197999aede8b3eda0b6ee0a1f38
+
+  unibilium:
+    git: https://github.com/crystallabs/unibilium.cr.git
+    version: 1.1.2
+
+  unibilium-shim:
+    git: https://github.com/crystallabs/unibilium-shim.cr.git
+    version: 1.1.0
+
+  w3m_image_display:
+    git: https://github.com/samuallb/w3mimagedisplay.git
+    version: 0.1.2
+

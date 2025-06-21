@@ -1,0 +1,24 @@
+name: quests
+version: 0.1.0
+
+description: |
+  A terminal-based quest management application built with Crystal.
+  Manage your quests and adventures with a terminal interface.
+
+authors:
+  - maksat <maksat.mansurov@gmail.com>
+
+targets:
+  quests:
+    main: src/cli.cr
+
+dependencies:
+  crysterm:
+    github: crystallabs/crysterm
+    branch: master
+
+crystal: '>= 1.16.3'
+
+license: MIT
+
+repository: https://github.com/your-username/quests.cr
