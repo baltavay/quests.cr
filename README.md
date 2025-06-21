@@ -26,25 +26,68 @@ A terminal-based quest management application built with Crystal and Crysterm.
 
 ### From Source
 
+#### Quick Install (Recommended)
+
+For Ubuntu/Debian:
+```bash
+git clone https://github.com/baltavay/quests.cr
+cd quests.cr
+make setup-ubuntu && make build && make install
+```
+
+For other platforms:
+```bash
+git clone https://github.com/baltavay/quests.cr
+cd quests.cr
+# Choose your platform
+make setup-fedora   # Fedora/RHEL
+make setup-arch     # Arch Linux  
+make setup-macos    # macOS
+# Then build and install
+make build && make install
+```
+
+#### Manual Install
+
 1. Clone the repository:
 ```bash
 git clone https://github.com/baltavay/quests.cr
 cd quests.cr
 ```
 
-2. Install dependencies:
+2. Install system dependencies:
 ```bash
-shards install
+# Ubuntu/Debian
+sudo apt-get install libunibilium-dev libreadline-dev
+
+# Fedora
+sudo dnf install unibilium-devel readline-devel
+
+# Arch Linux
+sudo pacman -S unibilium readline
+
+# macOS
+brew install unibilium readline
 ```
 
-3. Build the application:
+3. Install Crystal (if not already installed):
 ```bash
-shards build
+# See https://crystal-lang.org/install/ for your platform
 ```
 
-4. Run:
+4. Install Crystal dependencies:
 ```bash
-./bin/quests
+make deps
+```
+
+5. Build the application:
+```bash
+make build
+```
+
+6. Install globally (optional):
+```bash
+make install
 ```
 
 ### As a Dependency
@@ -156,19 +199,33 @@ app.run
 ```bash
 git clone https://github.com/baltavay/quests.cr
 cd quests.cr
-shards install
+make deps
 ```
 
 ### Running Tests
 
 ```bash
-crystal spec
+make test
 ```
 
 ### Building
 
 ```bash
-shards build
+make build
+```
+
+### System Installation
+
+Install globally to `/usr/local/bin`:
+
+```bash
+make install
+```
+
+Remove from system:
+
+```bash
+make uninstall
 ```
 
 ### Code Quality
@@ -179,6 +236,28 @@ crystal tool format
 
 # Lint code
 ameba
+```
+
+### Makefile Commands
+
+The project includes a Makefile with helpful commands:
+
+```bash
+make build        # Build the application
+make deps         # Install Crystal dependencies (after system deps)
+make check-deps   # Check if all dependencies are installed
+make test         # Run tests
+make install      # Install to system (requires sudo)
+make uninstall    # Remove from system (requires sudo)
+make clean        # Clean build artifacts
+
+# Platform-specific setup (installs everything):
+make setup-ubuntu # Install all dependencies on Ubuntu/Debian
+make setup-fedora # Install all dependencies on Fedora
+make setup-arch   # Install all dependencies on Arch Linux
+make setup-macos  # Install all dependencies on macOS
+
+make help         # Show all available commands
 ```
 
 ## API Documentation
