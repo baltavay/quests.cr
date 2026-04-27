@@ -4,6 +4,11 @@ A simple terminal todo app with waybar integration.
 
 Built with [Crystal](https://crystal-lang.org) and [crubbletea](https://github.com/baltavay/crubbletea).
 
+## Screenshots
+
+![screenshot1](assets/images/screenshot1.png)
+![screenshot2](assets/images/screenshot2.png)
+
 ## Features
 
 - Add, edit, delete, and complete tasks
