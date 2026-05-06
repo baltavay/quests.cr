@@ -2,5 +2,5 @@ version: 2.0
 shards:
   crubbletea:
     git: https://github.com/baltavay/crubbletea.git
-    version: 0.1.0+git.commit.f27030a4d9b9ec5202f133a5c4b93e6b7ee383ea
+    version: 0.1.0+git.commit.f31d0430a9168013e5a36e9849bd40fff3fdc01e
 

@@ -1,31 +1,11 @@
 # quests.cr
 
-A simple terminal todo app with waybar integration.
+Terminal todo app for [Omarchy](https://omarchy.org/). Built with [Crystal](https://crystal-lang.org) and [crubbletea](https://github.com/baltavay/crubbletea).
 
-Built with [Crystal](https://crystal-lang.org) and [crubbletea](https://github.com/baltavay/crubbletea).
-
-## Screenshots
-
-![screenshot1](assets/images/screenshot1.png)
-![screenshot2](assets/images/screenshot2.png)
-
-## Features
-
-- Add, edit, delete, and complete tasks
-- Priority levels (high / medium / low)
-- Categories, due dates, notes
-- Filter/search tasks
-- Vim-like keybindings (j/k, g/G, PgUp/PgDn)
-- Waybar module showing pending count with overdue/today alerts
-- Desktop notifications for overdue and due-today tasks
-
-## Install
-
-```
-shards build
-```
-
-Binary goes to `bin/quests`. Put it somewhere in your `$PATH`.
+![list](assets/images/screenshot-2026-05-07_00-44-36.png)
+![detail](assets/images/screenshot-2026-05-07_00-44-56.png)
+![edit](assets/images/screenshot-2026-05-07_00-45-12.png)
+![add](assets/images/screenshot-2026-05-07_00-47-08.png)
 
 ## Usage
 
@@ -35,43 +15,39 @@ quests add "Buy milk"          Quick add
 quests done 3                  Toggle done by id
 quests list                    Print tasks to terminal
 quests --waybar                Waybar JSON output
-quests --notify                Desktop notification
 quests --count                 Print pending count
 ```
 
 ### Keybindings
 
-| Key     | Action          |
-|---------|-----------------|
-| a       | Add quest       |
-| e       | Edit quest      |
-| d       | Delete quest    |
-| space   | Toggle done     |
-| /       | Filter          |
-| x       | Clear filter    |
-| ?       | Help            |
-| q       | Quit            |
+| Key   | Action          |
+|-------|-----------------|
+| a     | Add quest       |
+| e     | Edit quest      |
+| d     | Delete quest    |
+| enter | View details    |
+| space | Toggle done     |
+| /     | Filter          |
+| ?     | Help            |
+| q     | Quit            |
 
 ## Waybar
 
-Add to your waybar config:
-
 ```json
 "custom/quests": {
-  "exec": "quests --waybar --notify",
+  "exec": "/path/to/bin/quests --waybar",
   "return-type": "json",
-  "interval": 60
+  "format": "{}",
+  "on-click": "omarchy-launch-floating-terminal-with-presentation /path/to/bin/quests",
+  "interval": 30
 }
 ```
 
-This way waybar updates the pending count every 60 seconds and also sends a desktop notification about overdue and due-today tasks. Annoying by design.
+## Build
 
-Classes: `done`, `overdue`, `today`, `normal`. Use them to style the module.
+```
+make          # shards build --release
+make clean    # remove binary
+```
 
-## Data
-
-Tasks are stored in `~/.local/share/quests/data.json`.
-
-## License
-
-MIT
+Binary at `bin/quests`. Data stored in `~/.local/share/quests/data.json`.

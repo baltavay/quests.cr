@@ -15,7 +15,6 @@ targets:
 dependencies:
   crubbletea:
     github: baltavay/crubbletea
-    branch: master
 
 license: MIT
 
