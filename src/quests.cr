@@ -214,6 +214,7 @@ end
 struct SaveMsg
   include Crubbletea::Msg
   getter quest : Quest
+
   def initialize(@quest : Quest); end
 end
 
@@ -577,8 +578,8 @@ class App
     m = current_help_mode
     case m
     when AppMode::Edit, AppMode::Add then HELP_BINDINGS_FORM
-    when AppMode::Detail then HELP_BINDINGS_DETAIL
-    else HELP_BINDINGS
+    when AppMode::Detail             then HELP_BINDINGS_DETAIL
+    else                                  HELP_BINDINGS
     end
   end
 
@@ -586,8 +587,8 @@ class App
     m = current_help_mode
     case m
     when AppMode::Edit, AppMode::Add then HELP_FULL_FORM
-    when AppMode::Detail then HELP_FULL_DETAIL
-    else HELP_FULL
+    when AppMode::Detail             then HELP_FULL_DETAIL
+    else                                  HELP_FULL
     end
   end
 
@@ -632,7 +633,7 @@ class App
     invalidate_cache
   end
 
-  TICK_INTERVAL = 500.milliseconds
+  TICK_INTERVAL  = 500.milliseconds
   TOAST_DURATION = 90
   @toast_frames : Int32
   @toast_text : String
@@ -647,29 +648,29 @@ class App
 
   def update(msg) : {App, Crubbletea::Cmd?}
     result = case msg
-    when SaveMsg
-      handle_save(msg)
-    when BackMsg
-      @mode = AppMode::Main; @form = nil; mark_dirty; {self, nil}
-    when DeleteMsg
-      return {self, nil} unless current_quest; @mode = AppMode::Delete; mark_dirty; {self, nil}
-    when HelpMsg
-      @prev_mode = @mode; @mode = AppMode::Help; mark_dirty; {self, nil}
-    when Crubbletea::WindowSizeMsg
-      @width = msg.width; @height = msg.height; mark_dirty; {self, nil}
-    when TickMsg
-      if OmarchyTheme.reload_if_changed
-        mark_dirty
-        @toast_frames = TOAST_DURATION
-        name_path = File.join(ENV["HOME"]? || "/tmp", ".config/omarchy/current/theme.name")
-        name = File.exists?(name_path) ? File.read(name_path).strip : ""
-        @toast_text = name.empty? ? "Theme updated" : "Theme: #{name}"
-      end
-      @toast_frames -= 1 if @toast_frames > 0
-      {self, nil}
-    else
-      handle_msg(msg)
-    end
+             when SaveMsg
+               handle_save(msg)
+             when BackMsg
+               @mode = AppMode::Main; @form = nil; mark_dirty; {self, nil}
+             when DeleteMsg
+               return {self, nil} unless current_quest; @mode = AppMode::Delete; mark_dirty; {self, nil}
+             when HelpMsg
+               @prev_mode = @mode; @mode = AppMode::Help; mark_dirty; {self, nil}
+             when Crubbletea::WindowSizeMsg
+               @width = msg.width; @height = msg.height; mark_dirty; {self, nil}
+             when TickMsg
+               if OmarchyTheme.reload_if_changed
+                 mark_dirty
+                 @toast_frames = TOAST_DURATION
+                 name_path = File.join(ENV["HOME"]? || "/tmp", ".config/omarchy/current/theme.name")
+                 name = File.exists?(name_path) ? File.read(name_path).strip : ""
+                 @toast_text = name.empty? ? "Theme updated" : "Theme: #{name}"
+               end
+               @toast_frames -= 1 if @toast_frames > 0
+               {self, nil}
+             else
+               handle_msg(msg)
+             end
     app, cmd = result
     tick = schedule_tick
     final_cmd = cmd ? Crubbletea.batch([cmd, tick]) : tick
@@ -891,9 +892,9 @@ class App
       return form ? form.view : ""
     end
     base = Crubbletea::Lipgloss.join_vertical(
-            Crubbletea::Lipgloss::Style::Pos::Top,
-            [render_list_panel, render_status_bar]
-          )
+      Crubbletea::Lipgloss::Style::Pos::Top,
+      [render_list_panel, render_status_bar]
+    )
     case @mode
     when AppMode::Detail
       render_detail_view
@@ -943,7 +944,7 @@ class App
     check = (quest.done ? Styles.check_done : Styles.check_open).render(quest.done ? "✓" : "○")
     ts = quest.done ? Styles.title_done : selected ? Styles.title_sel : Styles.title_norm
     title = ts.render(truncate_visible(quest.title, {max_w - 4, 4}.max))
-    line = "#{check} #{title}"
+    line = " #{check} #{title}"
     line = truncate_visible(line, max_w)
     selected ? Styles.sel_bg.render(line) : line
   end
