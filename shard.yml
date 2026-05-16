@@ -1,5 +1,5 @@
 name: quests
-version: 0.2.0
+version: 0.3.0
 
 description: |
   A terminal-based quest management application built with Crystal.
@@ -13,8 +13,8 @@ targets:
     main: src/quests.cr
 
 dependencies:
-  crubbletea:
-    github: baltavay/crubbletea
+  ori:
+    github: baltavay/ori
 
 license: MIT
 

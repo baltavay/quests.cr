@@ -1,14 +1,10 @@
-require "crubbletea"
+require "ori"
 require "json"
 require "option_parser"
 require "time"
 
 DATA_DIR  = File.join(ENV["HOME"]? || "/tmp", ".local/share/quests")
 DATA_FILE = File.join(DATA_DIR, "data.json")
-
-struct TickMsg
-  include Crubbletea::Msg
-end
 
 module OmarchyTheme
   COLORS_PATH = File.join(ENV["HOME"]? || "/tmp", ".config/omarchy/current/theme/colors.toml")
@@ -130,32 +126,6 @@ module OmarchyTheme
   load
 end
 
-module QuestStore
-  extend self
-
-  def load : Array(Quest)
-    return [] of Quest unless File.exists?(DATA_FILE)
-    raw = JSON.parse(File.read(DATA_FILE)).as_a
-    raw.map { |h| Quest.from_json(h) }
-  rescue JSON::ParseException
-    [] of Quest
-  end
-
-  def save(quests : Array(Quest))
-    Dir.mkdir_p(DATA_DIR)
-    File.write(DATA_FILE, JSON.build(2) do |json|
-      json.array do
-        quests.each { |t| t.to_json(json) }
-      end
-    end)
-  end
-
-  def next_id(quests : Array(Quest)) : Int32
-    return 1 if quests.empty?
-    quests.map(&.id).max + 1
-  end
-end
-
 class Quest
   property id : Int32
   property title : String
@@ -189,866 +159,479 @@ class Quest
   end
 end
 
-class FilterState
-  property text : String
+module QuestStore
+  extend self
 
-  def initialize
-    @text = ""
+  def load : Array(Quest)
+    return [] of Quest unless File.exists?(DATA_FILE)
+    JSON.parse(File.read(DATA_FILE)).as_a.map { |h| Quest.from_json(h) }
+  rescue JSON::ParseException
+    [] of Quest
   end
 
-  def active? : Bool
-    !@text.empty?
-  end
-
-  def apply(quests : Array(Quest)) : Array(Quest)
-    return quests if @text.empty?
-    q = @text.downcase
-    quests.select { |t| t.title.downcase.includes?(q) || t.description.downcase.includes?(q) }
-  end
-
-  def description : String
-    @text.empty? ? "none" : "\"#{@text}\""
-  end
-end
-
-struct SaveMsg
-  include Crubbletea::Msg
-  getter quest : Quest
-
-  def initialize(@quest : Quest); end
-end
-
-struct BackMsg
-  include Crubbletea::Msg
-end
-
-struct DeleteMsg
-  include Crubbletea::Msg
-end
-
-struct HelpMsg
-  include Crubbletea::Msg
-end
-
-class QuestForm
-  getter title_input : Crubbletea::Bubbles::TextInput::Model
-  getter desc_input : Crubbletea::Bubbles::TextArea::Model
-  property field_index : Int32
-  property quest : Quest
-  getter is_new : Bool
-  getter content_width : Int32
-  getter title_line : Int32
-  getter desc_line : Int32
-
-  def initialize(@quest : Quest = Quest.new, @is_new : Bool = false, @content_width : Int32 = 60)
-    @field_index = 0
-
-    @title_input = Crubbletea::Bubbles::TextInput::Model.new(
-      prompt: "", placeholder: "Title", width: @content_width
-    )
-    @title_input.value = @quest.title
-
-    @desc_input = Crubbletea::Bubbles::TextArea::Model.new(
-      placeholder: "Description", width: @content_width, height: 4
-    )
-    @desc_input.value = @quest.description
-
-    @title_line = 0
-    @desc_line = 0
-  end
-
-  def field_count : Int32
-    2
-  end
-
-  def init : Crubbletea::Cmd?
-    @title_input.focus
-    nil
-  end
-
-  def focus_current : Nil
-    @title_input.blur
-    @desc_input.blur
-    case @field_index
-    when 0 then @title_input.focus
-    when 1 then @desc_input.focus
-    end
-  end
-
-  def update(msg) : {QuestForm, Crubbletea::Cmd?}
-    case msg
-    when Crubbletea::KeyPressMsg
-      key = msg.key
-      case
-      when key.to_s == "tab"
-        @field_index = (@field_index + 1) % field_count
-        focus_current
-        return {self, nil}
-      when key.to_s == "shift+tab"
-        @field_index = (@field_index - 1) % field_count
-        focus_current
-        return {self, nil}
-      when key.to_s == "ctrl+s"
-        return {self, -> { SaveMsg.new(build_quest).as(Crubbletea::Msg) }}
-      when key.to_s == "enter"
-        if @field_index == 0
-          return {self, -> { SaveMsg.new(build_quest).as(Crubbletea::Msg) }}
-        elsif @field_index == 1
-          @desc_input.update(msg)
-        end
-      when key.code == Crubbletea::Key::Code::Escape
-        return {self, -> { BackMsg.new.as(Crubbletea::Msg) }}
-      when key.text == "d" && !@title_input.focused? && !@desc_input.focused?
-        return {self, -> { DeleteMsg.new.as(Crubbletea::Msg) }}
-      when key.text == "?" && !@title_input.focused? && !@desc_input.focused?
-        return {self, -> { HelpMsg.new.as(Crubbletea::Msg) }}
-      else
-        case @field_index
-        when 0 then @title_input.update(msg)
-        when 1 then @desc_input.update(msg)
-        end
+  def save(quests : Array(Quest))
+    Dir.mkdir_p(DATA_DIR)
+    File.write(DATA_FILE, JSON.build(2) do |json|
+      json.array do
+        quests.each { |t| t.to_json(json) }
       end
-    end
-    {self, nil}
+    end)
   end
 
-  def build_quest : Quest
-    @quest.title = @title_input.value.strip
-    @quest.description = @desc_input.value.strip
-    @quest
-  end
-
-  def raw_view : String
-    accent = Crubbletea::Lipgloss::Style.new.bold(true).foreground(OmarchyTheme.accent)
-    dim = Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.dim)
-
-    lines = [] of String
-
-    header = @is_new ? "New Quest" : @quest.title
-    lines << accent.render(header)
-    lines << dim.render("─" * @content_width)
-
-    @title_line = lines.size
-    lines << @title_input.view
-
-    lines << ""
-    @desc_line = lines.size
-    @desc_input.view.split('\n').each do |dl|
-      lines << dl
-    end
-
-    lines << ""
-    lines << dim.render("tab: fields • ^s/↵: save • d: del • esc: back")
-
-    lines.join("\n")
-  end
-
-  def view : String
-    raw_view
-  end
-
-  def box_height : Int32
-    raw_view.split('\n').size
+  def next_id(quests : Array(Quest)) : Int32
+    return 1 if quests.empty?
+    quests.map(&.id).max + 1
   end
 end
 
-module Styles
-  def self.title : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.bold(true).foreground(OmarchyTheme.accent)
-  end
+ANSI_RESET = "\e[0m"
+ANSI_BOLD  = "\e[1m"
+ANSI_DIM   = "\e[2m"
+ANSI_STRIKE = "\e[9m"
 
-  def self.subtitle : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.subtitle)
-  end
-
-  def self.dim : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.dim)
-  end
-
-  def self.label : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.subtitle).width(14).bold(true)
-  end
-
-  def self.value : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.fg)
-  end
-
-  def self.status_bar : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.background(OmarchyTheme.bg).foreground(OmarchyTheme.dim_fg).padding(0, 1)
-  end
-
-  def self.form_box : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new
-      .border(Crubbletea::Lipgloss::Border.rounded)
-      .border_foreground(OmarchyTheme.accent).padding(1, 2)
-  end
-
-  def self.check_done : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.green)
-  end
-
-  def self.check_open : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.subtitle)
-  end
-
-  def self.title_done : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.dim).strikethrough(true)
-  end
-
-  def self.title_sel : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.bg).bold(true)
-  end
-
-  def self.title_norm : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.fg)
-  end
-
-  def self.sel_bg : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.background(OmarchyTheme.accent)
-  end
-
-  def self.status_done : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.green)
-  end
-
-  def self.status_open : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.yellow)
-  end
-
-  def self.desc_val : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.mid_fg)
-  end
-
-  def self.help_key : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.bold(true).foreground(OmarchyTheme.yellow).width(16)
-  end
-
-  def self.help_desc : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.fg)
-  end
-
-  def self.help_box : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new
-      .border(Crubbletea::Lipgloss::Border.rounded)
-      .border_foreground(OmarchyTheme.accent).padding(1, 3).background(OmarchyTheme.bg)
-  end
-
-  def self.delete_label : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.red)
-  end
-
-  def self.border : Crubbletea::Lipgloss::Style
-    Crubbletea::Lipgloss::Style.new
-      .border(Crubbletea::Lipgloss::Border.rounded)
-      .border_foreground(OmarchyTheme.accent)
-  end
+def ansi_fg(hex : String) : String
+  h = hex.delete('#')
+  r = h[0, 2].to_i(16)
+  g = h[2, 2].to_i(16)
+  b = h[4, 2].to_i(16)
+  "\e[38;2;#{r};#{g};#{b}m"
 end
 
-enum AppMode
-  Main
+enum View
+  List
   Detail
   Edit
-  Add
-  Delete
-  Filter
-  Help
 end
 
-class App
-  include Crubbletea::Model
-  include Crubbletea::Bubbles::Help::KeyMap
-
+class QuestApp < Ori::App
   @quests : Array(Quest)
-  @cursor : Int32
-  @mode : AppMode
-  @form : QuestForm?
-  @filter : FilterState
-  @width : Int32
-  @height : Int32
-  @filter_input : Crubbletea::Bubbles::TextInput::Model
-  @scroll_offset : Int32
-  @cache_ft : Array(Quest)?
-  @cache_valid : Bool
-  @dirty : Bool
-  @view_cache : String
-  @list_content_w : Int32
-  @prev_mode : AppMode
+  @view : View = View::List
+  @filter : String = ""
+  @filtering : Bool = false
+  @edit_quest : Quest?
+  @edit_new : Bool = false
+  @edit_title : String = ""
+  @edit_desc : String = ""
+  @edit_desc_row : Int32 = 0
+  @edit_desc_col : Int32 = 0
+  @filter_input : Ori::InputNode?
+  @title_input : Ori::InputNode?
+  @desc_area : Ori::AreaNode?
+  @quest_list : Ori::List?
+  @cursor : Int32 = 0
+  @confirm_delete : Bool = false
+  @show_help : Bool = false
+  @toast_frames : Int32 = 0
+  @toast_text : String = ""
+
+  TICK_INTERVAL  = 500.milliseconds
+  TOAST_DURATION = 30
 
   def initialize
     @quests = QuestStore.load
-    @cursor = 0
-    @mode = AppMode::Main
-    @prev_mode = AppMode::Main
-    @form = nil
-    @filter = FilterState.new
-    @width = 80
-    @height = 24
-    @filter_input = Crubbletea::Bubbles::TextInput::Model.new(
-      placeholder: "type to filter...", width: 30
-    )
-    @scroll_offset = 0
-    @cache_ft = nil
-    @cache_valid = false
-    @dirty = true
-    @view_cache = ""
-    @list_content_w = 0
-    @toast_frames = 0
-    @toast_text = ""
   end
 
-  def invalidate_cache
-    @cache_valid = false
-    @dirty = true
-  end
+  def on_start : Nil
+    start_tick(TICK_INTERVAL) do
+      if OmarchyTheme.reload_if_changed
+        @toast_frames = TOAST_DURATION
+        name_path = File.join(ENV["HOME"]? || "/tmp", ".config/omarchy/current/theme.name")
+        name = File.exists?(name_path) ? File.read(name_path).strip : ""
+        @toast_text = name.empty? ? "Theme updated" : "Theme: #{name}"
+        rebuild
+      end
+      if @toast_frames > 0
+        @toast_frames -= 1
+        rebuild if @toast_frames == 0
+      end
+    end
 
-  def mark_dirty
-    @dirty = true
-  end
-
-  HELP_BINDINGS = [
-    Crubbletea::Bubbles::Key.new_binding("a", help_key: "a", help_desc: "add"),
-    Crubbletea::Bubbles::Key.new_binding("e", help_key: "e", help_desc: "edit"),
-    Crubbletea::Bubbles::Key.new_binding("d", help_key: "d", help_desc: "delete"),
-    Crubbletea::Bubbles::Key.new_binding(" ", help_key: "space", help_desc: "toggle"),
-    Crubbletea::Bubbles::Key.new_binding("enter", help_key: "↵", help_desc: "details"),
-    Crubbletea::Bubbles::Key.new_binding("/", help_key: "/", help_desc: "filter"),
-    Crubbletea::Bubbles::Key.new_binding("esc", help_key: "esc", help_desc: "clear filter"),
-    Crubbletea::Bubbles::Key.new_binding("?", help_key: "?", help_desc: "help"),
-    Crubbletea::Bubbles::Key.new_binding("q", help_key: "q", help_desc: "quit"),
-  ]
-
-  HELP_BINDINGS_DETAIL = [
-    Crubbletea::Bubbles::Key.new_binding("e", help_key: "e", help_desc: "edit"),
-    Crubbletea::Bubbles::Key.new_binding("d", help_key: "d", help_desc: "delete"),
-    Crubbletea::Bubbles::Key.new_binding("esc", help_key: "esc", help_desc: "back"),
-    Crubbletea::Bubbles::Key.new_binding("?", help_key: "?", help_desc: "help"),
-  ]
-
-  HELP_FULL = [
-    [
-      Crubbletea::Bubbles::Key.new_binding("a", help_key: "a", help_desc: "Add new quest"),
-      Crubbletea::Bubbles::Key.new_binding("e", help_key: "e", help_desc: "Edit selected quest"),
-      Crubbletea::Bubbles::Key.new_binding("d", help_key: "d", help_desc: "Delete selected quest"),
-      Crubbletea::Bubbles::Key.new_binding(" ", help_key: "space", help_desc: "Toggle done/pending"),
-      Crubbletea::Bubbles::Key.new_binding("enter", help_key: "↵", help_desc: "View quest details"),
-      Crubbletea::Bubbles::Key.new_binding("up", "k", help_key: "↑/k", help_desc: "Navigate up"),
-      Crubbletea::Bubbles::Key.new_binding("down", "j", help_key: "↓/j", help_desc: "Navigate down"),
-      Crubbletea::Bubbles::Key.new_binding("g", help_key: "g", help_desc: "Jump to top"),
-      Crubbletea::Bubbles::Key.new_binding("G", help_key: "G", help_desc: "Jump to bottom"),
-      Crubbletea::Bubbles::Key.new_binding("pgup", "pgdown", help_key: "PgUp/PgDn", help_desc: "Page up/down"),
-      Crubbletea::Bubbles::Key.new_binding("/", help_key: "/", help_desc: "Filter/search"),
-      Crubbletea::Bubbles::Key.new_binding("esc", help_key: "esc", help_desc: "Clear filter"),
-      Crubbletea::Bubbles::Key.new_binding("?", help_key: "?", help_desc: "Show help"),
-      Crubbletea::Bubbles::Key.new_binding("q", "ctrl+c", help_key: "q/Ctrl+C", help_desc: "Quit"),
-    ],
-  ]
-
-  HELP_FULL_DETAIL = [
-    [
-      Crubbletea::Bubbles::Key.new_binding("e", help_key: "e", help_desc: "Edit quest"),
-      Crubbletea::Bubbles::Key.new_binding("d", help_key: "d", help_desc: "Delete quest"),
-      Crubbletea::Bubbles::Key.new_binding("esc", "enter", help_key: "esc/↵", help_desc: "Back to list"),
-      Crubbletea::Bubbles::Key.new_binding("?", help_key: "?", help_desc: "Show help"),
-    ],
-  ]
-
-  HELP_BINDINGS_FORM = [
-    Crubbletea::Bubbles::Key.new_binding("tab", help_key: "tab", help_desc: "next field"),
-    Crubbletea::Bubbles::Key.new_binding("enter", help_key: "↵", help_desc: "save"),
-    Crubbletea::Bubbles::Key.new_binding("d", help_key: "d", help_desc: "delete"),
-    Crubbletea::Bubbles::Key.new_binding("esc", help_key: "esc", help_desc: "back"),
-    Crubbletea::Bubbles::Key.new_binding("?", help_key: "?", help_desc: "help"),
-  ]
-
-  HELP_FULL_FORM = [
-    [
-      Crubbletea::Bubbles::Key.new_binding("tab", help_key: "tab/⇧+tab", help_desc: "Cycle fields"),
-      Crubbletea::Bubbles::Key.new_binding("ctrl+s", "enter", help_key: "^S/↵", help_desc: "Save & back"),
-      Crubbletea::Bubbles::Key.new_binding("d", help_key: "d", help_desc: "Delete quest"),
-      Crubbletea::Bubbles::Key.new_binding("esc", help_key: "esc", help_desc: "Back to list"),
-      Crubbletea::Bubbles::Key.new_binding("?", help_key: "?", help_desc: "Show help"),
-    ],
-  ]
-
-  def current_help_mode : AppMode
-    @mode == AppMode::Help ? @prev_mode : @mode
-  end
-
-  def short_help : Array(Crubbletea::Bubbles::Key::Binding)
-    m = current_help_mode
-    case m
-    when AppMode::Edit, AppMode::Add then HELP_BINDINGS_FORM
-    when AppMode::Detail             then HELP_BINDINGS_DETAIL
-    else                                  HELP_BINDINGS
+    Signal::USR1.trap do
+      OmarchyTheme.reload!
+      @toast_frames = TOAST_DURATION
+      name_path = File.join(ENV["HOME"]? || "/tmp", ".config/omarchy/current/theme.name")
+      name = File.exists?(name_path) ? File.read(name_path).strip : ""
+      @toast_text = name.empty? ? "Theme updated" : "Theme: #{name}"
+      rebuild
     end
   end
 
-  def full_help : Array(Array(Crubbletea::Bubbles::Key::Binding))
-    m = current_help_mode
-    case m
-    when AppMode::Edit, AppMode::Add then HELP_FULL_FORM
-    when AppMode::Detail             then HELP_FULL_DETAIL
-    else                                  HELP_FULL
+  def render : Ori::Box
+    case @view
+    when View::List   then render_list
+    when View::Detail then render_detail
+    when View::Edit   then render_edit
+    else                   render_list
     end
   end
 
-  def help_model(box_w : Int32) : Crubbletea::Bubbles::Help::HelpModel
-    Crubbletea::Bubbles::Help::HelpModel.new(
-      show_all: true,
-      width: box_w,
-      styles: Crubbletea::Bubbles::Help::Styles.new(
-        full_key: Crubbletea::Lipgloss::Style.new.bold(true).foreground(OmarchyTheme.yellow).width(12),
-        full_desc: Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.fg),
-      ),
-    )
-  end
-
-  def short_help_model : Crubbletea::Bubbles::Help::HelpModel
-    Crubbletea::Bubbles::Help::HelpModel.new(
-      show_all: false,
-      width: @width,
-      styles: Crubbletea::Bubbles::Help::Styles.new(
-        short_key: Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.dim_fg).inline(true),
-        short_desc: Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.subtitle).inline(true),
-      ),
-    )
-  end
-
-  def filtered_quests : Array(Quest)
-    return @cache_ft.not_nil! if @cache_valid
-    @cache_valid = true
+  private def sorted : Array(Quest)
     pending = @quests.reject(&.done).sort_by { |t| -t.id }
     done = @quests.select(&.done).sort_by { |t| t.created_at }.reverse
-    @cache_ft = @filter.active? ? @filter.apply(pending + done) : pending + done
+    result = pending + done
+    if @filter != ""
+      q = @filter.downcase
+      result = result.select { |t| t.title.downcase.includes?(q) || t.description.downcase.includes?(q) }
+    end
+    result
   end
 
-  def current_quest : Quest?
-    ft = filtered_quests
-    return nil if ft.empty?
-    ft[Math.min(@cursor, ft.size - 1)]
+  private def current_quest : Quest?
+    s = sorted
+    return nil if s.empty?
+    s[Math.min(@cursor, s.size - 1)]
   end
 
-  def save
-    QuestStore.save(@quests)
-    invalidate_cache
-  end
+  private def render_list : Ori::Box
+    s = sorted
+    pending = @quests.count { |t| !t.done }
+    done_count = @quests.size - pending
 
-  TICK_INTERVAL  = 500.milliseconds
-  TOAST_DURATION = 90
-  @toast_frames : Int32
-  @toast_text : String
-
-  def init : Crubbletea::Cmd?
-    schedule_tick
-  end
-
-  def schedule_tick : Crubbletea::Cmd?
-    Crubbletea.every(TICK_INTERVAL) { TickMsg.new.as(Crubbletea::Msg) }
-  end
-
-  def update(msg) : {App, Crubbletea::Cmd?}
-    result = case msg
-             when SaveMsg
-               handle_save(msg)
-             when BackMsg
-               @mode = AppMode::Main; @form = nil; mark_dirty; {self, nil}
-             when DeleteMsg
-               return {self, nil} unless current_quest; @mode = AppMode::Delete; mark_dirty; {self, nil}
-             when HelpMsg
-               @prev_mode = @mode; @mode = AppMode::Help; mark_dirty; {self, nil}
-             when Crubbletea::WindowSizeMsg
-               @width = msg.width; @height = msg.height; mark_dirty; {self, nil}
-             when TickMsg
-               if OmarchyTheme.reload_if_changed
-                 mark_dirty
-                 @toast_frames = TOAST_DURATION
-                 name_path = File.join(ENV["HOME"]? || "/tmp", ".config/omarchy/current/theme.name")
-                 name = File.exists?(name_path) ? File.read(name_path).strip : ""
-                 @toast_text = name.empty? ? "Theme updated" : "Theme: #{name}"
-               end
-               @toast_frames -= 1 if @toast_frames > 0
-               {self, nil}
-             else
-               handle_msg(msg)
-             end
-    app, cmd = result
-    tick = schedule_tick
-    final_cmd = cmd ? Crubbletea.batch([cmd, tick]) : tick
-    {app, final_cmd}
-  end
-
-  def handle_msg(msg) : {App, Crubbletea::Cmd?}
-    if @mode == AppMode::Help
-      if msg.is_a?(Crubbletea::KeyPressMsg)
-        @mode = @prev_mode
-        mark_dirty
+    box height: "100%", direction: :vertical, bg: OmarchyTheme.bg do
+      box padding: {1, 2}, direction: :horizontal do
+        text "Quests", bold: true, fg: OmarchyTheme.accent
+        text " [#{pending} pending, #{done_count} done]", fg: OmarchyTheme.subtitle
+        if @filter != "" && !@filtering
+          text "  filter: ", fg: OmarchyTheme.dim
+          text @filter, fg: OmarchyTheme.yellow
+        end
       end
-      return {self, nil}
-    end
 
-    if @mode == AppMode::Detail
-      return handle_detail_keys(msg)
-    end
+      if s.empty?
+        box flex: 1, padding: {0, 2} do
+          if @filter != ""
+            text "  No matches. Press / to change filter or esc to clear.", fg: OmarchyTheme.dim
+          else
+            text "  No quests yet. Press 'a' to add one.", fg: OmarchyTheme.dim
+          end
+        end
+      else
+        checked = s.map(&.done)
+        @quest_list = list(
+          items: s.map { |t| Ori::List::Item.new(t.title, t.id.to_s) },
+          selected: @cursor,
+          checked: checked,
+          focusable: true,
+          checkable: true,
+          selected_fg: OmarchyTheme.bg,
+          selected_bg: OmarchyTheme.accent,
+          truncate: 40,
+          flex: 1,
+          on_select: ->(idx : Int32) { @cursor = idx; @view = View::Detail; rebuild },
+          on_change: ->(idx : Int32) { @cursor = idx; nil },
+        )
+      end
 
-    if @mode == AppMode::Edit || @mode == AppMode::Add
-      return handle_form(msg)
-    end
+      if @toast_frames > 0
+        box padding: {0, 2} do
+          text @toast_text, fg: OmarchyTheme.accent
+        end
+      end
 
-    if @mode == AppMode::Filter
-      return handle_filter_input(msg)
-    end
+      if @filtering
+        box padding: {0, 2} do
+          @filter_input = input value: @filter,
+            placeholder: "type to filter...",
+            prefix: "/",
+            focusable: true,
+            border: :none,
+            on_change: ->(v : String) { @filter = v; rebuild }
+        end
+      end
 
-    case msg
-    when Crubbletea::KeyPressMsg
-      return @mode == AppMode::Delete ? handle_delete_confirm(msg) : handle_main_keys(msg)
+      box padding: {0, 2} do
+        text " a:add  e:edit  d:delete  space:toggle  /:filter  ?:help  q:quit", fg: OmarchyTheme.dim
+      end
     end
-
-    {self, nil}
   end
 
-  def handle_main_keys(msg : Crubbletea::KeyPressMsg) : {App, Crubbletea::Cmd?}
-    key = msg.key
+  private def render_detail : Ori::Box
+    quest = current_quest || return render_list
+    box height: "100%", padding: 2, direction: :vertical, bg: OmarchyTheme.bg do
+      text quest.title, bold: true, fg: OmarchyTheme.accent
+      text "─" * 50, fg: OmarchyTheme.dim
+      status = quest.done ? "✓ Done" : "○ Pending"
+      sfg = quest.done ? OmarchyTheme.green : OmarchyTheme.yellow
+      text "#{status}  #{quest.created_at}", fg: sfg
+      unless quest.description.empty?
+        text ""
+        text quest.description, fg: OmarchyTheme.fg
+      end
+      text ""
+      text " e:edit  d:delete  ?:help  esc:back", fg: OmarchyTheme.dim
+    end
+  end
+
+  private def render_edit : Ori::Box
+    header = @edit_new ? "New Quest" : (@edit_quest.try(&.title) || "Edit Quest")
+    box height: "100%", padding: 2, direction: :vertical, bg: OmarchyTheme.bg do
+      text header, bold: true, fg: OmarchyTheme.accent
+      text "─" * 50, fg: OmarchyTheme.dim
+      text ""
+      text "Title:", fg: OmarchyTheme.subtitle
+      @title_input = input value: @edit_title,
+        placeholder: "Enter title...",
+        focusable: true,
+        border: :none,
+        on_change: ->(v : String) { @edit_title = v; nil },
+        on_submit: ->{ save_edit; nil }
+      text ""
+      text "Description:", fg: OmarchyTheme.subtitle
+      @desc_area = area value: @edit_desc,
+        focusable: true,
+        height: 5,
+        border: :none,
+        cursor_row: @edit_desc_row,
+        cursor_col: @edit_desc_col,
+        on_change: ->(v : String, r : Int32, c : Int32) { @edit_desc = v; @edit_desc_row = r; @edit_desc_col = c; nil }
+      text ""
+      text " tab:focus  ctrl+s/enter:save  esc:cancel", fg: OmarchyTheme.dim
+    end
+  end
+
+  private def show_help_dialog : Nil
+    show_dialog do
+      box padding: 2, direction: :vertical, border: :rounded, border_fg: OmarchyTheme.accent, bg: OmarchyTheme.bg do
+        text "Keyboard Shortcuts", bold: true, fg: OmarchyTheme.accent
+        text ""
+        text "a          Add new quest", fg: OmarchyTheme.fg
+        text "e          Edit selected", fg: OmarchyTheme.fg
+        text "d          Delete selected", fg: OmarchyTheme.fg
+        text "space      Toggle done", fg: OmarchyTheme.fg
+        text "enter      View details", fg: OmarchyTheme.fg
+        text "/          Filter/search", fg: OmarchyTheme.fg
+        text "esc        Clear filter / back", fg: OmarchyTheme.fg
+        text "up/down    Navigate", fg: OmarchyTheme.fg
+        text "g/G        Jump top/bottom", fg: OmarchyTheme.fg
+        text "?          Show help", fg: OmarchyTheme.fg
+        text "q          Quit", fg: OmarchyTheme.fg
+        text ""
+        text "Press any key to close", fg: OmarchyTheme.dim
+      end
+    end
+  end
+
+  def handle_key(key : Ori::Key) : Bool
+    if key.ctrl && key.text == "c"
+      @running = false
+      return false
+    end
+
+    if @confirm_delete
+      handle_delete_confirm(key)
+      return false
+    end
+
+    if @show_help
+      @show_help = false
+      close_dialog
+      return false
+    end
+
+    handled = case @view
+              when View::List   then handle_list(key)
+              when View::Detail then handle_detail(key)
+              when View::Edit   then handle_edit(key)
+              else                   false
+              end
+
+    unless handled
+      if fm = @focus
+        fm.handle_key(key)
+        if @filtering
+          @filter = @filter_input.try(&.value) || ""
+        end
+        rebuild
+      end
+    end
+
+    false
+  end
+
+  def on_mouse(mouse : Ori::Mouse) : Bool
+    return false unless @view == View::List && !@filtering
+    if mouse.wheel? && mouse.button.wheel_up?
+      @cursor = {@cursor - 3, 0}.max
+      rebuild
+      true
+    elsif mouse.wheel? && mouse.button.wheel_down?
+      s = sorted
+      @cursor = {@cursor + 3, {s.size - 1, 0}.max}.min
+      rebuild
+      true
+    else
+      false
+    end
+  end
+
+  private def handle_list(key : Ori::Key) : Bool
+    if @filtering
+      case
+      when key.code.escape?
+        @filtering = false
+        @filter = ""
+        @cursor = 0
+        rebuild
+        true
+      when key.code.enter?
+        @filtering = false
+        rebuild
+        true
+      else
+        false
+      end
+    else
+      case
+      when key.text == "q"
+        @running = false
+        true
+      when key.text == "a"
+        start_edit(true)
+        true
+      when key.text == "e"
+        c = current_quest
+        return false unless c
+        start_edit(false, c)
+        true
+      when key.text == "d"
+        return false unless current_quest
+        ask_delete
+        true
+      when key.text == "?"
+        @show_help = true
+        show_help_dialog
+        true
+      when key.text == "/"
+        @filtering = true
+        rebuild
+        true
+      when key.code.escape?
+        @filter = ""
+        @cursor = 0
+        rebuild
+        true
+      when key.code.space?
+        c = current_quest
+        return false unless c
+        c.done = !c.done
+        QuestStore.save(@quests)
+        rebuild
+        true
+      else
+        false
+      end
+    end
+  end
+
+  private def handle_detail(key : Ori::Key) : Bool
     case
-    when key.code == Crubbletea::Key::Code::Escape
-      if @filter.active?
-        @filter = FilterState.new; @cursor = 0; @scroll_offset = 0; invalidate_cache
-      end
-    when key.text == "q", key.to_s == "ctrl+c"
-      return {self, Crubbletea.quit}
-    when key.code == Crubbletea::Key::Code::Up, key.text == "k"
-      @cursor = {@cursor - 1, 0}.max; adjust_scroll; mark_dirty
-    when key.code == Crubbletea::Key::Code::Down, key.text == "j"
-      @cursor = {@cursor + 1, {filtered_quests.size - 1, 0}.max}.min; adjust_scroll; mark_dirty
-    when key.code == Crubbletea::Key::Code::Home, key.text == "g"
-      @cursor = 0; @scroll_offset = 0; mark_dirty
-    when key.code == Crubbletea::Key::Code::End, key.text == "G"
-      @cursor = {filtered_quests.size - 1, 0}.max; adjust_scroll; mark_dirty
-    when key.code == Crubbletea::Key::Code::PgUp, key.to_s == "ctrl+b"
-      @cursor = {@cursor - list_height, 0}.max; adjust_scroll; mark_dirty
-    when key.code == Crubbletea::Key::Code::PgDown, key.to_s == "ctrl+f"
-      @cursor = {@cursor + list_height, {filtered_quests.size - 1, 0}.max}.min; adjust_scroll; mark_dirty
-    when key.text == "a"
-      @mode = AppMode::Add; @form = QuestForm.new(is_new: true, content_width: {@width, 40}.max); @form.not_nil!.init; mark_dirty; return {self, nil}
+    when key.code.escape? || key.code.enter?
+      @view = View::List
+      rebuild
+      true
     when key.text == "e"
-      quest = current_quest; return {self, nil} unless quest
-      @mode = AppMode::Edit; @form = QuestForm.new(quest, content_width: {@width, 40}.max); @form.not_nil!.init; mark_dirty; return {self, nil}
+      c = current_quest
+      return false unless c
+      start_edit(false, c)
+      true
     when key.text == "d"
-      return {self, nil} unless current_quest; @mode = AppMode::Delete; mark_dirty
-    when key.code == Crubbletea::Key::Code::Space
-      quest = current_quest; return {self, nil} unless quest
-      quest.done = !quest.done
-      save; invalidate_cache
-    when key.text == "/"
-      @mode = AppMode::Filter; @filter_input = Crubbletea::Bubbles::TextInput::Model.new(
-        placeholder: "type to filter...", width: 30
-      )
-      @filter_input.focus; mark_dirty; return {self, nil}
+      return false unless current_quest
+      ask_delete
+      true
     when key.text == "?"
-      @prev_mode = @mode; @mode = AppMode::Help; mark_dirty
-    when key.code == Crubbletea::Key::Code::Enter
-      quest = current_quest; return {self, nil} unless quest
-      @mode = AppMode::Detail; mark_dirty; return {self, nil}
-    end
-    {self, nil}
-  end
-
-  def handle_detail_keys(msg) : {App, Crubbletea::Cmd?}
-    if msg.is_a?(Crubbletea::KeyPressMsg)
-      case
-      when msg.key.code == Crubbletea::Key::Code::Escape,
-           msg.key.code == Crubbletea::Key::Code::Enter,
-           msg.key.text == "q"
-        @mode = AppMode::Main; mark_dirty; return {self, nil}
-      when msg.key.text == "e"
-        quest = current_quest; return {self, nil} unless quest
-        @mode = AppMode::Edit; @form = QuestForm.new(quest, content_width: {@width, 40}.max); @form.not_nil!.init; mark_dirty; return {self, nil}
-      when msg.key.text == "d"
-        return {self, nil} unless current_quest; @mode = AppMode::Delete; mark_dirty
-      when msg.key.text == "?"
-        @prev_mode = @mode; @mode = AppMode::Help; mark_dirty
-      end
-    end
-    {self, nil}
-  end
-
-  def handle_form(msg) : {App, Crubbletea::Cmd?}
-    form = @form.not_nil!
-    form, cmd = form.update(msg)
-    @form = form
-    mark_dirty
-    {self, cmd}
-  end
-
-  def handle_save(msg : SaveMsg) : {App, Crubbletea::Cmd?}
-    quest = msg.quest
-    if quest.id == 0
-      quest.id = QuestStore.next_id(@quests)
-      quest.created_at = Time.local.to_s("%Y-%m-%d %H:%M")
-      @quests << quest
+      @show_help = true
+      show_help_dialog
+      true
     else
-      idx = @quests.index { |t| t.id == quest.id }
-      @quests[idx] = quest if idx
+      false
     end
-    save; @mode = AppMode::Main; @form = nil; mark_dirty
-    {self, nil}
   end
 
-  def handle_filter_input(msg) : {App, Crubbletea::Cmd?}
-    if msg.is_a?(Crubbletea::KeyPressMsg)
-      case
-      when msg.key.code == Crubbletea::Key::Code::Escape
-        @filter = FilterState.new
-        @mode = AppMode::Main; @filter_input.blur
-        @cursor = 0; @scroll_offset = 0; invalidate_cache; mark_dirty; return {self, nil}
-      when msg.key.code == Crubbletea::Key::Code::Enter
-        @filter.text = @filter_input.value; @mode = AppMode::Main; @filter_input.blur
-        @cursor = 0; @scroll_offset = 0; invalidate_cache; return {self, nil}
-      end
-    end
-    @filter_input, _ = @filter_input.update(msg)
-    @filter.text = @filter_input.value
-    @cursor = 0; @scroll_offset = 0; invalidate_cache
-    {self, nil}
-  end
-
-  def handle_delete_confirm(msg : Crubbletea::KeyPressMsg) : {App, Crubbletea::Cmd?}
+  private def handle_edit(key : Ori::Key) : Bool
     case
-    when msg.key.text == "y", msg.key.code == Crubbletea::Key::Code::Enter
-      quest = current_quest
-      if quest
-        @quests.reject! { |t| t.id == quest.id }; save
-        @cursor = {@cursor, {filtered_quests.size - 1, 0}.max}.min
+    when key.code.escape?
+      @view = View::List
+      rebuild
+      true
+    when key.ctrl && key.text == "s"
+      save_edit
+      true
+    else
+      false
+    end
+  end
+
+  private def ask_delete : Nil
+    c = current_quest
+    title = c ? c.title[0...30] : "this item"
+    @confirm_delete = true
+    show_dialog do
+      box padding: 2, direction: :vertical, border: :rounded, border_fg: OmarchyTheme.red, bg: OmarchyTheme.bg do
+        text "Delete \"#{title}\"?", bold: true, fg: OmarchyTheme.red
+        text ""
+        text "y: confirm   n/esc: cancel", fg: OmarchyTheme.dim
       end
-      @mode = AppMode::Main
-    when msg.key.text == "n", msg.key.code == Crubbletea::Key::Code::Escape
-      @mode = AppMode::Main
     end
-    mark_dirty
-    {self, nil}
   end
 
-  def adjust_scroll
-    visible = list_height
-    @scroll_offset = @cursor if @cursor < @scroll_offset
-    @scroll_offset = @cursor - visible + 1 if @cursor >= @scroll_offset + visible
-  end
-
-  def list_height : Int32
-    h = @height - 5
-    h -= 1 if @toast_frames > 0
-    h > 0 ? h : 1
-  end
-
-  ANSI_RE = /\e\[[^m]*m/
-
-  def truncate_visible(text : String, max_width : Int32) : String
-    return text if max_width < 4
-    plain = text.gsub(ANSI_RE, "")
-    return text if plain.size <= max_width
-    Crubbletea::Lipgloss::ANSI.truncate(text, max_width - 1, "…")
-  end
-
-  def view : Crubbletea::View
-    v = Crubbletea::View.new
-    v.alt_screen = true
-    v.background_color = OmarchyTheme.bg
-    content = build_view
-    v.content = content
-    if (@mode == AppMode::Edit || @mode == AppMode::Add) && @form
-      cursor = compute_form_cursor
-      v.cursor = cursor if cursor
-    elsif @mode == AppMode::Filter && @filter_input.focused?
-      cx = 9 + @filter_input.cursor_pos
-      cy = content.split('\n').size - 1
-      v.cursor = Crubbletea::Cursor.new(cx, cy)
+  private def handle_delete_confirm(key : Ori::Key) : Nil
+    case
+    when key.text == "y" || key.code.enter?
+      @confirm_delete = false
+      close_dialog
+      confirm_delete
+    when key.text == "n" || key.code.escape?
+      @confirm_delete = false
+      close_dialog
     end
-    v
   end
 
-  def compute_form_cursor : Crubbletea::Cursor?
-    form = @form
-    return nil unless form
+  private def start_edit(is_new : Bool, quest : Quest = Quest.new)
+    @edit_new = is_new
+    @edit_quest = is_new ? Quest.new : quest
+    @edit_title = @edit_quest.not_nil!.title
+    @edit_desc = @edit_quest.not_nil!.description
+    @view = View::Edit
+    rebuild
+  end
 
-    col_offset = 0
-    row_offset = 0
-
-    case form.field_index
-    when 0
-      cx = col_offset + form.title_input.visible_cursor_pos
-      cy = row_offset + form.title_line
-    when 1
-      cx = col_offset + form.desc_input.visible_cursor_col
-      cy = row_offset + form.desc_line + form.desc_input.visible_cursor_row
+  private def save_edit
+    title = @edit_title.strip
+    desc = @edit_desc.strip
+    if @edit_new
+      q = @edit_quest || Quest.new
+      q.title = title.empty? ? "Untitled" : title
+      q.description = desc
+      q.id = QuestStore.next_id(@quests)
+      q.created_at = Time.local.to_s("%Y-%m-%d %H:%M")
+      @quests << q
     else
-      return nil
+      q = @edit_quest
+      if q && (idx = @quests.index { |x| x.id == q.id })
+        q.title = title.empty? ? "Untitled" : title
+        q.description = desc
+        @quests[idx] = q
+      end
     end
-
-    Crubbletea::Cursor.new({cx, @width - 2}.min, {cy, @height - 2}.min)
+    QuestStore.save(@quests)
+    @view = View::List
+    rebuild
   end
 
-  def build_view : String
-    if @mode == AppMode::Edit || @mode == AppMode::Add
-      form = @form
-      return form ? form.view : ""
+  private def confirm_delete
+    if c = current_quest
+      @quests.reject! { |t| t.id == c.id }
+      QuestStore.save(@quests)
     end
-    base = Crubbletea::Lipgloss.join_vertical(
-      Crubbletea::Lipgloss::Style::Pos::Top,
-      [render_list_panel, render_status_bar]
-    )
-    case @mode
-    when AppMode::Detail
-      render_detail_view
-    when AppMode::Delete
-      render_delete_overlay(base)
-    when AppMode::Help
-      render_help_overlay(base)
-    else
-      base
-    end
-  end
-
-  def render_list_panel : String
-    w = @width
-    h = @height - 2
-    @list_content_w = w
-    ft = filtered_quests
-    pending = ft.count { |t| !t.done }
-    header = "#{Styles.title.render("Quests")} #{Styles.subtitle.render("[#{pending} pending, #{ft.size - pending} done]")}"
-    if ft.size > list_height
-      range = "#{@scroll_offset + 1}-#{@scroll_offset + list_height}"
-      header += " #{Styles.dim.render("#{range}/#{ft.size}")}"
-    end
-    lines = [header]
-    if @filter.active?
-      filter_label = Crubbletea::Lipgloss::Style.new.bold(true).foreground(OmarchyTheme.subtitle).render("Filter:")
-      filter_val = Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.fg).render(@filter.text)
-      lines << ""
-      lines << "#{filter_label} #{filter_val}"
-    end
-    lines << ""
-    if ft.empty?
-      lines << Styles.dim.render("No quests yet. Press 'a' to add one.")
-      remaining = list_height - lines.size + 2
-      remaining.times { lines << "" } if remaining > 0
-    else
-      end_idx = {@scroll_offset + list_height, ft.size}.min
-      (@scroll_offset...end_idx).each { |i| lines << render_quest_line(ft[i], i == @cursor) }
-      remaining = list_height - lines.size + 2
-      remaining.times { lines << "" } if remaining > 0
-    end
-    lines.join("\n")
-  end
-
-  def render_quest_line(quest : Quest, selected : Bool) : String
-    max_w = @list_content_w - 2
-    check = (quest.done ? Styles.check_done : Styles.check_open).render(quest.done ? "✓" : "○")
-    ts = quest.done ? Styles.title_done : selected ? Styles.title_sel : Styles.title_norm
-    title = ts.render(truncate_visible(quest.title, {max_w - 4, 4}.max))
-    line = " #{check} #{title}"
-    line = truncate_visible(line, max_w)
-    selected ? Styles.sel_bg.render(line) : line
-  end
-
-  def render_status_bar : String
-    w = @width
-    left_text = case @mode
-                when AppMode::Delete
-                  Styles.delete_label.render("CONFIRM DELETE (y/n)")
-                when AppMode::Filter
-                  "FILTER: #{@filter_input.value}"
-                else
-                  short_help_model.view(self)
-                end
-    bar = Styles.status_bar.width(w).render(left_text)
-    if @toast_frames > 0
-      alpha = @toast_frames.to_f / TOAST_DURATION
-      toast_style = Crubbletea::Lipgloss::Style.new
-        .foreground(blend_color(OmarchyTheme.accent, OmarchyTheme.bg, alpha))
-        .width(w)
-        .align(Crubbletea::Lipgloss::Style::Pos::Center)
-      bar = toast_style.render(@toast_text) + "\n" + bar
-    end
-    bar
-  end
-
-  def blend_color(fg_hex : String, bg_hex : String, alpha : Float64) : String
-    fr, fg_i, fb = hex_to_rgb(fg_hex)
-    br, bg_i, bb = hex_to_rgb(bg_hex)
-    r = (br + (fr - br) * alpha).to_i.clamp(0, 255)
-    g = (bg_i + (fg_i - bg_i) * alpha).to_i.clamp(0, 255)
-    b = (bb + (fb - bb) * alpha).to_i.clamp(0, 255)
-    "##{r.to_s(16).rjust(2, '0')}#{g.to_s(16).rjust(2, '0')}#{b.to_s(16).rjust(2, '0')}"
-  end
-
-  def hex_to_rgb(hex : String) : {Int32, Int32, Int32}
-    h = hex.delete('#')
-    r = h[0, 2].to_i(16)
-    g = h[2, 2].to_i(16)
-    b = h[4, 2].to_i(16)
-    {r, g, b}
-  end
-
-  def render_detail_view : String
-    quest = current_quest
-    unless quest
-      @mode = AppMode::Main; mark_dirty
-      return render_list_panel
-    end
-    accent = Crubbletea::Lipgloss::Style.new.bold(true).foreground(OmarchyTheme.accent)
-    dim = Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.dim)
-    fg = Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.fg)
-
-    lines = [] of String
-    lines << accent.render(quest.title)
-    lines << dim.render("─" * @width)
-
-    s = quest.done ? Styles.status_done.render("✓ Done") : Styles.status_open.render("○ Pending")
-    lines << "#{s}  #{dim.render(quest.created_at)}"
-
-    unless quest.description.empty?
-      lines << ""
-      wrapped = Crubbletea::Lipgloss::ANSI.wrap(quest.description, @width)
-      lines << fg.render(wrapped)
-    end
-
-    lines << ""
-    lines << dim.render("e: edit • d: delete • esc: back")
-    lines.join("\n")
-  end
-
-  def render_delete_overlay(base : String) : String
-    quest = current_quest
-    title = quest ? quest.title : "this item"
-    box_style = Styles.border.border_foreground(OmarchyTheme.red).padding(1, 3)
-      .width({(@width * 0.5).to_i, 44}.max)
-    lines = [
-      Styles.delete_label.render("Delete Quest?"),
-      "",
-      Styles.title_norm.render(title),
-      "",
-      Styles.dim.render("y: confirm   n/esc: cancel"),
-    ]
-    box = box_style.render(lines.join("\n"))
-    Crubbletea::Lipgloss.place(@width, @height,
-      Crubbletea::Lipgloss::Style::Pos::Center,
-      Crubbletea::Lipgloss::Style::Pos::Center, box)
-  end
-
-  def render_help_overlay(base : String) : String
-    w = {(@width * 0.6).to_i, 56}.max
-    help_view = help_model(w).view(self)
-    lines = [Styles.title.render("Keyboard Shortcuts"), "", help_view, "", Styles.dim.render("Press any key to close")]
-    box = Styles.help_box.width(w).render(lines.join("\n"))
-    Crubbletea::Lipgloss.place(@width, @height,
-      Crubbletea::Lipgloss::Style::Pos::Center,
-      Crubbletea::Lipgloss::Style::Pos::Center, box)
+    s = sorted
+    @cursor = {@cursor, {s.size - 1, 0}.max}.min
+    @view = View::List
+    rebuild
   end
 end
 
 def run_tui
-  Signal::USR1.trap { OmarchyTheme.reload! }
-  program = Crubbletea::Program(App).new(App.new)
-  program.run
+  QuestApp.run
 end
 
 def waybar_output
@@ -1066,7 +649,7 @@ end
 
 def quick_add(title : String)
   quests = QuestStore.load
-  id = quests.empty? ? 1 : (quests.map(&.id).max + 1)
+  id = QuestStore.next_id(quests)
   quests << Quest.new(id: id, title: title)
   QuestStore.save(quests)
   puts "Added: #{title} (##{id})"
@@ -1096,7 +679,7 @@ def quick_list
   done = quests.select(&.done)
 
   unless pending.empty?
-    puts Crubbletea::Lipgloss::Style.new.bold(true).foreground(OmarchyTheme.accent).render("Pending (#{pending.size})")
+    puts "#{ANSI_BOLD}#{ansi_fg(OmarchyTheme.accent)}Pending (#{pending.size})#{ANSI_RESET}"
     pending.each do |t|
       puts "  ○ #{t.title}"
     end
@@ -1104,9 +687,9 @@ def quick_list
 
   unless done.empty?
     puts "" if !pending.empty?
-    puts Crubbletea::Lipgloss::Style.new.bold(true).foreground(OmarchyTheme.green).render("Done (#{done.size})")
+    puts "#{ANSI_BOLD}#{ansi_fg(OmarchyTheme.green)}Done (#{done.size})#{ANSI_RESET}"
     done.each do |t|
-      puts "  ✓ #{Crubbletea::Lipgloss::Style.new.foreground(OmarchyTheme.dim).strikethrough(true).render(t.title)}"
+      puts "  ✓ #{ANSI_DIM}#{ANSI_STRIKE}#{t.title}#{ANSI_RESET}"
     end
   end
 end
